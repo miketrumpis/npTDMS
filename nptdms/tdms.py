@@ -601,15 +601,6 @@ class TdmsObject(object):
             self.data = []
         else:
             if memmap_dir:
-                # going to replace this object with some array flavor
-                # from py-tables
-                ## memmap_file = tempfile.NamedTemporaryFile(
-                ##         mode='w+b', prefix="nptdms_", dir=memmap_dir)
-                ## self.data = np.memmap(
-                ##         memmap_file.name,
-                ##         mode='w+',
-                ##         shape=(self.number_values,),
-                ##         dtype=self.data_type.nptype)
                 h5f_name = tempfile.mktemp(
                     suffix='.h5', prefix='nptdms_', dir=memmap_dir
                     )
@@ -618,10 +609,6 @@ class TdmsObject(object):
                 #filters = tables.Filters(complevel=3, complib='zlib')
                 filters = None
                 atom = tables.Atom.from_dtype(np.dtype(self.data_type.nptype))
-                ## arr = h5f.create_carray(
-                ##     h5f.root, 'data', atom=atom,
-                ##     shape=(self.number_values,), filters=filters
-                ##     )
                 arr = h5f.create_earray(
                     h5f.root, 'data', atom=atom,
                     shape=(0,), filters=filters,
@@ -650,6 +637,7 @@ class TdmsObject(object):
                     self.data[data_pos[0]:data_pos[1]] = new_data
                 else:
                     self.data.append(new_data)
+                    # not sure about this stage
                     ## self.data.flush()
             else:
                 self.data.extend(new_data)
