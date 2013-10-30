@@ -17,6 +17,9 @@ from copy import copy
 import numpy as np
 from datetime import datetime, timedelta
 import tempfile
+import tables
+import os
+import resource
 try:
     import pytz
 except ImportError:
@@ -167,6 +170,14 @@ class TdmsFile(object):
                 tdms_file.seek(segment.next_segment_pos)
 
         # Allocate space for data
+        (flim_soft, flim_hard) = resource.getrlimit(resource.RLIMIT_NOFILE)
+        flim_needed = len(self.objects.keys())
+        if flim_needed > flim_soft:
+            print 'boosting file limits', 3*flim_needed
+            resource.setrlimit(
+                resource.RLIMIT_NOFILE, (3*flim_needed, flim_hard)
+                )
+        resource.getrlimit
         for object in self.objects.values():
             object._initialise_data(memmap_dir=self.memmap_dir)
 
@@ -513,6 +524,7 @@ class TdmsObject(object):
         self.number_values = 0
         self.has_data = False
         self._previous_segment_object = None
+        self._mmap = None
 
     def __repr__(self):
         return "<TdmsObject with path %s>" % self.path
@@ -554,6 +566,14 @@ class TdmsObject(object):
                 offset + (len(self.data) - 1) * increment,
                 len(self.data))
 
+    def __del__(self):
+        # close down and delete the temp file
+        mmap_name = self._mmap.filename
+        if self._mmap.isopen:
+            self._mmap.close()
+        print 'bye-bye', mmap_name
+        os.unlink(mmap_name)
+
     def _initialise_data(self, memmap_dir=None):
         """Initialise data array to zeros"""
 
@@ -563,13 +583,34 @@ class TdmsObject(object):
             self.data = []
         else:
             if memmap_dir:
-                memmap_file = tempfile.NamedTemporaryFile(
-                        mode='w+b', prefix="nptdms_", dir=memmap_dir)
-                self.data = np.memmap(
-                        memmap_file.name,
-                        mode='w+',
-                        shape=(self.number_values,),
-                        dtype=self.data_type.nptype)
+                # going to replace this object with some array flavor
+                # from py-tables
+                ## memmap_file = tempfile.NamedTemporaryFile(
+                ##         mode='w+b', prefix="nptdms_", dir=memmap_dir)
+                ## self.data = np.memmap(
+                ##         memmap_file.name,
+                ##         mode='w+',
+                ##         shape=(self.number_values,),
+                ##         dtype=self.data_type.nptype)
+                h5f_name = tempfile.mktemp(
+                    suffix='.h5', prefix='nptdms_', dir=memmap_dir
+                    )
+                h5f_name = os.path.abspath(h5f_name)
+                h5f = tables.open_file(h5f_name, mode='w')
+                #filters = tables.Filters(complevel=3, complib='zlib')
+                filters = None
+                atom = tables.Atom.from_dtype(np.dtype(self.data_type.nptype))
+                ## arr = h5f.create_carray(
+                ##     h5f.root, 'data', atom=atom,
+                ##     shape=(self.number_values,), filters=filters
+                ##     )
+                arr = h5f.create_earray(
+                    h5f.root, 'data', atom=atom,
+                    shape=(0,), filters=filters,
+                    expectedrows=self.number_values
+                    )
+                self._mmap = h5f
+                self.data = arr
             else:
                 self.data = np.zeros(
                         self.number_values, dtype=self.data_type.nptype)
@@ -584,10 +625,14 @@ class TdmsObject(object):
             self.data = new_data
         else:
             if self.data_type.nptype is not None:
-                data_pos = (self._data_insert_position,
-                        self._data_insert_position + len(new_data))
-                self._data_insert_position += len(new_data)
-                self.data[data_pos[0]:data_pos[1]] = new_data
+                if self._mmap is None:
+                    data_pos = (self._data_insert_position,
+                            self._data_insert_position + len(new_data))
+                    self._data_insert_position += len(new_data)
+                    self.data[data_pos[0]:data_pos[1]] = new_data
+                else:
+                    self.data.append(new_data)
+                    ## self.data.flush()
             else:
                 self.data.extend(new_data)
 
