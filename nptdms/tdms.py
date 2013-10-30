@@ -255,6 +255,19 @@ class TdmsFile(object):
 
         return self.object(group, channel).data
 
+    def close_channels(self):
+        """Close and unlink any memmap'd channel files"""
+        for ch in self.objects.values():
+            ch._close()
+
+    def __enter__(self):
+        """As the keeper of TdmsObjects, this class will clean up the mess."""
+        return self
+
+    def __exit__(self, ext_type, exc_value, traceback):
+        """As the keeper of TdmsObjects, this class will clean up the mess."""
+        self.close_channels()
+
 
 class _TdmsSegment(object):
     def __init__(self, f):
@@ -567,12 +580,17 @@ class TdmsObject(object):
                 len(self.data))
 
     def __del__(self):
+        self._close()
+
+    def _close(self):
         # close down and delete the temp file
+        if self._mmap is None:
+            return
         mmap_name = self._mmap.filename
         if self._mmap.isopen:
             self._mmap.close()
-        print 'bye-bye', mmap_name
-        os.unlink(mmap_name)
+        if os.path.exists(mmap_name):
+            os.unlink(mmap_name)
 
     def _initialise_data(self, memmap_dir=None):
         """Initialise data array to zeros"""
