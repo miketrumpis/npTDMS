@@ -329,7 +329,7 @@ class _TdmsSegment(object):
         s = f.read(4)
         num_objects = struct.unpack("<l", s)[0]
 
-        for obj in range(num_objects):
+        for obj in xrange(num_objects):
             # Read the object path
             object_path = read_string(f)
 
@@ -419,7 +419,7 @@ class _TdmsSegment(object):
         else:
             endianness = '<'
 
-        for chunk in range(self.num_chunks):
+        for chunk in xrange(self.num_chunks):
             if self.toc["kTocInterleavedData"]:
                 log.debug("Data is interleaved")
                 data_objects = [o for o in self.ordered_objects if o.has_data]
@@ -675,7 +675,7 @@ class _TdmsSegmentObject(object):
         s = f.read(4)
         num_properties = struct.unpack("<L", s)[0]
         log.debug("Reading %d properties" % num_properties)
-        for i in range(num_properties):
+        for i in xrange(num_properties):
             prop_name = read_string(f)
 
             # Property data type
@@ -706,7 +706,7 @@ class _TdmsSegmentObject(object):
                     newbyteorder(endianness))
             return np.fromfile(file, dtype=dtype, count=self.number_values)
         data = self._new_segment_data()
-        for i in range(self.number_values):
+        for i in xrange(self.number_values):
             data[i] = read_type(file, self.data_type, endianness)
         return data
 
