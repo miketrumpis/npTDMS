@@ -19,7 +19,11 @@ from datetime import datetime, timedelta
 import tempfile
 import tables
 import os
-import resource
+try:
+    import resource
+    RS_DEFD = True
+except:
+    RS_DEFD = False
 try:
     import pytz
 except ImportError:
@@ -170,14 +174,15 @@ class TdmsFile(object):
                 tdms_file.seek(segment.next_segment_pos)
 
         # Allocate space for data
-        (flim_soft, flim_hard) = resource.getrlimit(resource.RLIMIT_NOFILE)
-        flim_needed = len(self.objects.keys())
-        if flim_needed > flim_soft:
-            print 'boosting file limits', 3*flim_needed
-            resource.setrlimit(
-                resource.RLIMIT_NOFILE, (3*flim_needed, flim_hard)
-                )
-        resource.getrlimit
+        if RS_DEFD:
+            (flim_soft, flim_hard) = resource.getrlimit(resource.RLIMIT_NOFILE)
+            flim_needed = len(self.objects.keys())
+            if flim_needed > flim_soft:
+                print 'boosting file limits', 3*flim_needed
+                resource.setrlimit(
+                    resource.RLIMIT_NOFILE, (3*flim_needed, flim_hard)
+                    )
+            resource.getrlimit
         for object in self.objects.values():
             object._initialise_data(memmap_dir=self.memmap_dir)
 
