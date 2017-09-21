@@ -69,7 +69,7 @@ class TdmsFile(object):
 
     """
 
-    def __init__(self, file, memmap_dir=None):
+    def __init__(self, file, memmap_dir=None, light_logging=True):
         """Initialise a new TDMS file object, reading all data.
 
         :param file: Either the path to the tdms file to read or an already
@@ -84,6 +84,7 @@ class TdmsFile(object):
         self.segments = []
         self.objects = OrderedDict()
         self.memmap_dir = memmap_dir
+        self.light_logging = light_logging
 
         if hasattr(file, "read"):
             # Is a file
@@ -99,7 +100,7 @@ class TdmsFile(object):
             previous_segment = None
             while True:
                 try:
-                    segment = _TdmsSegment(f, self)
+                    segment = _TdmsSegment(f, self, light_logging=self.light_logging)
                 except EOFError:
                     # We've finished reading the file
                     break
@@ -290,9 +291,9 @@ class _TdmsSegment(object):
         'position', 'num_chunks', 'ordered_objects', 'toc', 'version',
         'next_segment_offset', 'next_segment_pos', 'tdms_file',
         'raw_data_offset', 'data_position', 'final_chunk_proportion',
-        'endianness']
+        'endianness', 'light_logging']
 
-    def __init__(self, f, tdms_file):
+    def __init__(self, f, tdms_file, light_logging=False):
         """Read the lead in section of a segment"""
 
         self.tdms_file = tdms_file
@@ -302,7 +303,8 @@ class _TdmsSegment(object):
         # A list of _TdmsSegmentObject
         self.ordered_objects = []
         self.final_chunk_proportion = 1.0
-
+        self.light_logging = light_logging
+        
         # First four bytes should be TDSm
         try:
             s = f.read(4).decode('utf-8')
@@ -390,7 +392,8 @@ class _TdmsSegment(object):
             if object_path in objects:
                 obj = objects[object_path]
             else:
-                obj = TdmsObject(object_path, self.tdms_file)
+                obj = TdmsObject(object_path, self.tdms_file,
+                                 light_logging=self.light_logging)
                 objects[object_path] = obj
 
             # Add this segment object to the list of segment objects,
@@ -499,7 +502,8 @@ class _TdmsSegment(object):
 
         for chunk in range(self.num_chunks):
             if self.toc["kTocInterleavedData"]:
-                log.debug("Data is interleaved")
+                if not self.light_logging:
+                    log.debug("Data is interleaved")
                 data_objects = [o for o in self.ordered_objects if o.has_data]
                 # If all data types have numpy types and all the lengths are
                 # the same, then we can read all data at once with numpy,
@@ -514,7 +518,8 @@ class _TdmsSegment(object):
                     self._read_interleaved(f, data_objects)
             else:
                 object_data = {}
-                log.debug("Data is contiguous")
+                if not self.light_logging:
+                    log.debug("Data is contiguous")
                 for obj in self.ordered_objects:
                     if obj.has_data:
                         if (chunk == (self.num_chunks - 1) and
@@ -592,7 +597,7 @@ class TdmsObject(object):
 
     """
 
-    def __init__(self, path, tdms_file=None):
+    def __init__(self, path, tdms_file=None, light_logging=False):
         self.path = path
         self.tdms_file = tdms_file
         self._data = None
@@ -603,6 +608,7 @@ class TdmsObject(object):
         self.number_values = 0
         self.has_data = False
         self._previous_segment_object = None
+        self.light_logging = light_logging
 
     def __repr__(self):
         return "<TdmsObject with path %s>" % self.path
@@ -734,8 +740,9 @@ class TdmsObject(object):
     def _update_data(self, new_data):
         """Update the object data with a new array of data"""
 
-        log.debug("Adding %d data points to data for %s" %
-                  (len(new_data), self.path))
+        if not self.light_logging:
+            log.debug("Adding %d data points to data for %s" %
+                      (len(new_data), self.path))
         if self._data is None:
             self._data = new_data
         else:
