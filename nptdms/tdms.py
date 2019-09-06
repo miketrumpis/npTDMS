@@ -16,6 +16,11 @@ import numpy as np
 import re
 import tempfile
 from io import UnsupportedOperation
+try:
+    import resource
+    RS_DEFD = True
+except ImportError:
+    RS_DEFD = False
 
 from nptdms.utils import Timer
 from nptdms.common import toc_properties
@@ -115,6 +120,14 @@ class TdmsFile(object):
                     f.seek(segment.next_segment_pos)
 
         with Timer(log, "Allocate space"):
+            if RS_DEFD and self.memmap_dir:
+                (flim_soft, flim_hard) = resource.getrlimit(resource.RLIMIT_NOFILE)
+                flim_needed = len(self.objects.keys())
+                if flim_needed > flim_soft:
+                    print('boosting file limits', 3 * flim_needed)
+                    resource.setrlimit(
+                        resource.RLIMIT_NOFILE, (3 * flim_needed, flim_hard)
+                        )
             # Allocate space for data
             for object in self.objects.values():
                 object._initialise_data(memmap_dir=self.memmap_dir)
